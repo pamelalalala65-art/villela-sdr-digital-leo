@@ -1,0 +1,1 @@
+ALTER TABLE `meetings` ADD `contactDate` varchar(10);

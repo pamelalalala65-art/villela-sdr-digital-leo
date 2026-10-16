@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="VILLELA SDR">
+  <rect width="512" height="512" fill="#08111F"/>
+  <path d="M106 144h300v224H106z" fill="none" stroke="#F7FAFF" stroke-width="20"/>
+  <path d="M106 199h300" stroke="#F7FAFF" stroke-width="20"/>
+  <path d="M164 111v66M348 111v66" stroke="#F7FAFF" stroke-width="20" stroke-linecap="round"/>
+  <path d="m166 300 47 48 127-135" fill="none" stroke="#2F7CF6" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

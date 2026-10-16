@@ -1,0 +1,14 @@
+{
+  "routes": [
+    { "path": "/", "title": "Dashboard" },
+    { "path": "/reunioes", "title": "Reuniões" },
+    { "path": "/calendario", "title": "Calendário" },
+    { "path": "/sdrs", "title": "SDRs" },
+    { "path": "/relatorios", "title": "Relatórios" },
+    { "path": "/bonificacoes", "title": "Bonificações" },
+    { "path": "/ranking", "title": "Ranking" },
+    { "path": "/perfil", "title": "Meu perfil" },
+    { "path": "/advogados", "title": "Advogados" },
+    { "path": "/configuracoes", "title": "Configurações" }
+  ]
+}
