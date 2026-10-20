@@ -40,13 +40,31 @@ export function registerOAuthRoutes(app: Express) {
         return;
       }
 
-      await db.upsertUser({
+      const loginMethod = userInfo.loginMethod ?? userInfo.platform ?? null;
+      const existingUser = await db.getUserByOpenId(userInfo.openId);
+      const claimedImportedUser = existingUser ? false : await db.claimImportedUserByEmail({
         openId: userInfo.openId,
+        email: userInfo.email ?? "",
         name: userInfo.name || null,
-        email: userInfo.email ?? null,
-        loginMethod: userInfo.loginMethod ?? userInfo.platform ?? null,
-        lastSignedIn: new Date(),
+        loginMethod,
       });
+      if (!existingUser && !claimedImportedUser) {
+        await db.upsertUser({
+          openId: userInfo.openId,
+          name: userInfo.name || null,
+          email: userInfo.email ?? null,
+          loginMethod,
+          lastSignedIn: new Date(),
+        });
+      } else if (existingUser) {
+        await db.upsertUser({
+          openId: userInfo.openId,
+          name: userInfo.name || null,
+          email: userInfo.email ?? null,
+          loginMethod,
+          lastSignedIn: new Date(),
+        });
+      }
 
       const sessionToken = await sdk.createSessionToken(userInfo.openId, {
         name: userInfo.name || "",

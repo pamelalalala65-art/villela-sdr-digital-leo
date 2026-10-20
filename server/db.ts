@@ -84,6 +84,29 @@ export async function getUserByEmail(email: string) {
   return result[0];
 }
 
+export async function claimImportedUserByEmail(input: { openId: string; email: string; name?: string | null; loginMethod?: string | null }) {
+  const db = await getDb();
+  if (!db || !input.openId || !input.email.trim()) return false;
+  const email = input.email.trim().toLowerCase();
+  const matches = await db.select({ id: users.id, openId: users.openId, name: users.name })
+    .from(users)
+    .where(and(eq(users.email, email), eq(users.active, true)));
+  const candidates = matches.filter(user => user.openId.startsWith("villela_import_"));
+  if (candidates.length !== 1) return false;
+  const candidate = candidates[0];
+  const result = await db.update(users)
+    .set({
+      openId: input.openId,
+      name: candidate.name?.trim() ? candidate.name : input.name || null,
+      loginMethod: input.loginMethod || null,
+      lastSignedIn: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(and(eq(users.id, candidate.id), eq(users.openId, candidate.openId), eq(users.active, true)));
+  const affectedRows = Number((result as unknown as [{ affectedRows?: number }])[0]?.affectedRows ?? 0);
+  return affectedRows > 0;
+}
+
 export async function registerPendingUser(email: string, role: UserRole) {
   const db = await getDb();
   if (!db) throw new Error("Database is not available");

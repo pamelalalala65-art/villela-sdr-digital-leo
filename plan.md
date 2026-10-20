@@ -29,3 +29,10 @@ Campos nullable para compatibilidade: `leadChannel`, `leadChannelOther`, `adPlat
 ## Design e entrega
 
 A interface seguirá o dashboard dark corporativo atual: painéis escuros, bordas discretas, acentos azul/âmbar, labels em maiúsculas, grid responsivo e microcopy objetiva. A seção de aquisição será um painel interno visualmente destacado, sem criar um formulário paralelo ou uma nova aplicação. A aplicação continua sendo SPA React/Vite com API Express/tRPC e banco MySQL; não há necessidade de mudar deployment, rotas públicas ou cache.
+
+
+## Recuperação dos dados da exportação
+
+A planilha `villela-sdr-export-2026-09-01-a-2026-10-16.xlsx` é a fonte de dados para esta restauração. Um importador explícito e repetível valida IDs, tipos e vínculos antes de gravar as abas operacionais no MySQL gerenciado: reuniões, usuários, setores, vínculos, histórico, advogados, bonificações e logs de integração da API. IDs históricos de entidades serão mantidos; referências a setores serão remapeadas por `code` para os setores canônicos sem duplicar as linhas semeadas pelas migrations; a gravação dos registros ocorrerá em uma transação com guarda contra reimportação de tabelas já preenchidas.
+
+O `openId` não consta do Excel. Usuários importados recebem um identificador sintético não autenticável e o callback OAuth associa uma identidade real somente a um registro de importação inequivocamente selecionável pelo e-mail autenticado, preservando papel, estado ativo e vínculos de setor. Na duplicidade encontrada, o registro ativo é o único elegível; o histórico inativo permanece separado. Tokens Google, hashes de convite/API e credenciais omitidos pela exportação não serão reconstruídos: conexões Google ficam desconectadas até nova autorização, a integração histórica sem segredo fica desativada e sem hash, e seus logs são preservados.

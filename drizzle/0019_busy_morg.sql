@@ -18,5 +18,5 @@ ALTER TABLE `meetings` ADD `utm_term` varchar(180);--> statement-breakpoint
 ALTER TABLE `meetings` ADD `lead_entry_date` varchar(10);--> statement-breakpoint
 ALTER TABLE `meetings` ADD `qualification_status` varchar(30) DEFAULT 'NAO_AVALIADO';--> statement-breakpoint
 ALTER TABLE `meetings` ADD `disqualification_reason` varchar(120);--> statement-breakpoint
-ALTER TABLE `meetings` ADD `disqualification_other` varchar(180);
+ALTER TABLE `meetings` ADD `disqualification_other` varchar(180);--> statement-breakpoint
 INSERT INTO `sectors` (`code`, `name`, `active`) VALUES ('TRAFEGO_PAGO', 'TRÁFEGO PAGO', 1) ON DUPLICATE KEY UPDATE `name` = 'TRÁFEGO PAGO', `active` = 1;

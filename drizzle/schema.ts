@@ -245,7 +245,7 @@ export const apiIntegrations = mysqlTable("api_integrations", {
   id: int("id").autoincrement().primaryKey(),
   name: varchar("name", { length: 160 }).notNull(),
   keyPrefix: varchar("keyPrefix", { length: 24 }).notNull().unique(),
-  secretHash: varchar("secretHash", { length: 64 }).notNull().unique(),
+  secretHash: varchar("secretHash", { length: 64 }).unique(),
   sectorCode: apiIntegrationSectorEnum.notNull().default("CONCILIE"),
   permissions: text("permissions").notNull(),
   active: boolean("active").notNull().default(true),
@@ -277,6 +277,14 @@ export const bonusCompetencies = mysqlTable("bonus_competencies", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, table => ({ statusIdx: index("bonus_competencies_status_idx").on(table.status) }));
+
+export const legacyImportMetadata = mysqlTable("legacy_import_metadata", {
+  id: int("id").autoincrement().primaryKey(),
+  sourceType: varchar("sourceType", { length: 40 }).notNull(),
+  sourceId: int("sourceId").notNull(),
+  payload: mediumtext("payload").notNull(),
+  importedAt: timestamp("importedAt").defaultNow().notNull(),
+}, table => ({ sourceIdx: uniqueIndex("legacy_import_metadata_source_idx").on(table.sourceType, table.sourceId) }));
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
