@@ -162,6 +162,13 @@
       "when": 1792499663192,
       "tag": "0022_archive_legacy_export_metadata",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "5",
+      "when": 1792507753153,
+      "tag": "0023_projuris_quick_meeting",
+      "breakpoints": true
     }
   ]
 }

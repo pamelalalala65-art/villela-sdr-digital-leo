@@ -172,6 +172,7 @@ export const meetings = mysqlTable(
     noShowReason: text("noShowReason"),
     pgfnDebtOver2m: boolean("pgfnDebtOver2m").notNull().default(false),
     pgfnDebtAmount: varchar("pgfnDebtAmount", { length: 40 }),
+    quickMeeting: boolean("quick_meeting").notNull().default(false),
     wasContacted: boolean("wasContacted"),
     wantsReschedule: boolean("wantsReschedule"),
     cancelReason: text("cancelReason"),

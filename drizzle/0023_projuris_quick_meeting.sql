@@ -1,0 +1,1 @@
+ALTER TABLE `meetings` ADD `quick_meeting` boolean DEFAULT false NOT NULL;

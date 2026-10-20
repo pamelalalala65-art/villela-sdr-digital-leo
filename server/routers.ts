@@ -143,6 +143,7 @@ const meetingFields = {
   cancelReason: z.string().max(2000).optional().nullable(),
   pgfnDebtOver2m: z.boolean().optional(),
   pgfnDebtAmount: z.string().max(40).optional().nullable(),
+  quickMeeting: z.boolean().optional(),
   leadChannel: leadChannelSchema.optional().nullable(),
   leadChannelOther: z.string().trim().max(160).optional().or(z.literal("")),
   adPlatform: adPlatformSchema.optional().nullable(),
@@ -294,6 +295,7 @@ export const appRouter = router({
         sectorId: ctx.sectorId!,
         pgfnDebtOver2m: sectorCode === "PROJURIS_2" ? Boolean(input.pgfnDebtOver2m) : false,
         pgfnDebtAmount: sectorCode === "PROJURIS_2" && input.pgfnDebtOver2m ? input.pgfnDebtAmount || null : null,
+        quickMeeting: sectorCode === "PROJURIS_2" && Boolean(input.quickMeeting),
       };
       if (sectorCode !== "TRAFEGO_PAGO") TRAFFIC_FIELDS.forEach(key => delete (values as Record<string, unknown>)[key]);
       if (sectorCode !== "CONCILIE") ["closedContract", "closedContractValue", "contractInstallments", "contractLawyer"].forEach(key => delete (values as Record<string, unknown>)[key]);
@@ -353,7 +355,7 @@ export const appRouter = router({
         patch.lawyerId = selectedLawyer.id;
         patch.lawyerEmail = selectedLawyer.email;
       }
-      if (sectorCode !== "PROJURIS_2") { delete patch.pgfnDebtOver2m; delete patch.pgfnDebtAmount; }
+      if (sectorCode !== "PROJURIS_2") { delete patch.pgfnDebtOver2m; delete patch.pgfnDebtAmount; delete patch.quickMeeting; }
       if (sectorCode !== "CONCILIE") contractKeys.forEach(key => delete patch[key]);
       if (!canManage) {
         delete patch.sdrId;
@@ -549,6 +551,7 @@ export const appRouter = router({
         desejaRemarcar: row.meeting.wantsReschedule ? "Sim" : "Não",
         motivoCancelamento: row.meeting.cancelReason ?? "",
         pgfnAcimaDeDoisMilhoes: sectorCode === "PROJURIS_2" && row.meeting.pgfnDebtOver2m ? "Sim" : "Não",
+        ...(sectorCode === "PROJURIS_2" ? { reuniaoRelampago: row.meeting.quickMeeting ? "Sim" : "Não" } : {}),
         valorDividaPgfn: row.meeting.pgfnDebtAmount ?? "",
         emailAdvogado: row.meeting.lawyerEmail ?? "",
         googleCalendarStatus: row.meeting.googleCalendarStatus ?? "",

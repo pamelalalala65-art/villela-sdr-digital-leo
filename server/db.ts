@@ -4,6 +4,7 @@ import { alias } from "drizzle-orm/mysql-core";
 import { createHash, randomBytes } from "node:crypto";
 import { InsertMeeting, InsertUser, MeetingStatus, apiIntegrationLogs, apiIntegrations, bonusCompetencies, gmailSenderConnections, googleCalendarConnections, lawyerGoogleCalendarConnections, lawyerGoogleInvites, lawyers, meetingHistory, meetings, sectors, userSectors, UserRole, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
+import { compareProjurisRankingRows, isCompletedQuickMeeting } from "./meetingMetrics";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 export const PRIMARY_MANAGER_EMAIL = "leonardo.cunha@grupovillela.com";
@@ -552,22 +553,28 @@ export async function markLawyerGoogleInviteError(id: number, message: string) {
 export async function getMeetingCounts(filters: MeetingFilters, scope?: Scope) {
   const rows = await getAllMeetingsForSummary(filters, scope);
   const counts = { AGENDADA: 0, REALIZADA: 0, NO_SHOW: 0, CANCELADA: 0 };
-  const bySdr = new Map<string, { name: string; total: number; realized: number; noShow: number; closedContracts: number }>();
+  const bySdr = new Map<number, { id: number; name: string; total: number; realized: number; quickMeetings: number; noShow: number; closedContracts: number }>();
   for (const row of rows) {
     const status = row.meeting.status as keyof typeof counts;
-    if (status in counts) counts[status] += 1;
+    const isQuick = isCompletedQuickMeeting(row.meeting);
+    if (status in counts && !(status === "REALIZADA" && isQuick)) counts[status] += 1;
+    const sdrId = row.meeting.sdrId == null ? -1 : Number(row.meeting.sdrId);
     const name = row.sdrName || "Sem SDR";
-    const current = bySdr.get(name) ?? { name, total: 0, realized: 0, noShow: 0, closedContracts: 0 };
+    const current = bySdr.get(sdrId) ?? { id: sdrId, name, total: 0, realized: 0, quickMeetings: 0, noShow: 0, closedContracts: 0 };
     current.total += 1;
-    if (status === "REALIZADA") current.realized += 1;
+    if (status === "REALIZADA") {
+      if (isQuick) current.quickMeetings += 1;
+      else current.realized += 1;
+    }
     if (status === "NO_SHOW") current.noShow += 1;
     if (row.meeting.closedContract) current.closedContracts += 1;
-    bySdr.set(name, current);
+    bySdr.set(sdrId, current);
   }
   const completed = counts.REALIZADA + counts.NO_SHOW;
   const today = new Date().toISOString().slice(0, 10);
   return {
     ...counts,
+    reunioesRelampago: rows.filter(row => isCompletedQuickMeeting(row.meeting)).length,
     total: rows.length,
     attendanceRate: completed ? Math.round((counts.REALIZADA / completed) * 100) : null,
     bySdr: Array.from(bySdr.values()).sort((a, b) => b.total - a.total),
@@ -582,13 +589,16 @@ export async function getSdrIndicators(filters: MeetingFilters, scope?: Scope) {
   // A data de contato continua sendo usada apenas para dias com contato e ticket médio.
   const rows = await getAllMeetingsForSummary({ ...filters, reportByContactDate: false }, scope);
   const contactRows = await getAllMeetingsForSummary({ ...filters, reportByContactDate: true }, scope);
-  const names = new Map<number, { id: number; name: string; totalAgendamentos: number; pendentes: number; realizadas: number; noShow: number; canceladas: number; contactDates: Set<string> }>();
+  const names = new Map<number, { id: number; name: string; totalAgendamentos: number; pendentes: number; realizadas: number; reunioesRelampago: number; noShow: number; canceladas: number; contactDates: Set<string> }>();
   for (const row of rows) {
-    const current = names.get(row.meeting.sdrId) ?? { id: row.meeting.sdrId, name: row.sdrName || "Sem nome", totalAgendamentos: 0, pendentes: 0, realizadas: 0, noShow: 0, canceladas: 0, contactDates: new Set<string>() };
+    const current = names.get(row.meeting.sdrId) ?? { id: row.meeting.sdrId, name: row.sdrName || "Sem nome", totalAgendamentos: 0, pendentes: 0, realizadas: 0, reunioesRelampago: 0, noShow: 0, canceladas: 0, contactDates: new Set<string>() };
     current.totalAgendamentos += 1;
     const key = row.meeting.status;
     if (key === "AGENDADA") current.pendentes += 1;
-    if (key === "REALIZADA") current.realizadas += 1;
+    if (key === "REALIZADA") {
+      if (isCompletedQuickMeeting(row.meeting)) current.reunioesRelampago += 1;
+      else current.realizadas += 1;
+    }
     if (key === "NO_SHOW") current.noShow += 1;
     if (key === "CANCELADA") current.canceladas += 1;
     names.set(row.meeting.sdrId, current);
@@ -638,19 +648,23 @@ async function calculateRankingLive(monthKey: string, sectorId: number, includeB
   const rows = await getAllMeetingsForSummary({ from: `${monthKey}-01`, to: `${monthKey}-${String(lastDay).padStart(2, "0")}` }, { userId: 0, ownOnly: false, sectorId });
   const sector = (await db.select({ code: sectors.code }).from(sectors).where(eq(sectors.id, sectorId)).limit(1))[0];
   const isConcilie = sector?.code === "CONCILIE";
-  const byId = new Map<number, any>(usersInSector.map(user => [user.id, { ...user, scheduled: 0, realized: 0, noShow: 0, cancelled: 0, specialMeetings: 0, closedContracts: 0 }]));
+  const byId = new Map<number, any>(usersInSector.map(user => [user.id, { ...user, scheduled: 0, realized: 0, quickMeetings: 0, noShow: 0, cancelled: 0, specialMeetings: 0, closedContracts: 0 }]));
   const daily = new Map<string, Map<number, number>>();
   for (const row of rows) {
     const item = byId.get(row.meeting.sdrId);
     if (!item) continue;
     item.scheduled += 1;
     if (row.meeting.status === "REALIZADA") {
-      item.realized += 1;
+      const isQuick = isCompletedQuickMeeting(row.meeting);
+      if (isQuick) item.quickMeetings += 1;
+      else item.realized += 1;
       if (isConcilie && row.meeting.closedContract) item.closedContracts += 1;
       if (row.meeting.pgfnDebtOver2m) item.specialMeetings += 1;
-      const day = String(row.meeting.date).slice(0, 10);
-      if (!daily.has(day)) daily.set(day, new Map());
-      const dayMap = daily.get(day)!; dayMap.set(item.id, (dayMap.get(item.id) ?? 0) + 1);
+      if (!isQuick) {
+        const day = String(row.meeting.date).slice(0, 10);
+        if (!daily.has(day)) daily.set(day, new Map());
+        const dayMap = daily.get(day)!; dayMap.set(item.id, (dayMap.get(item.id) ?? 0) + 1);
+      }
     }
     if (row.meeting.status === "NO_SHOW") item.noShow += 1;
     if (row.meeting.status === "CANCELADA") item.cancelled += 1;
@@ -658,9 +672,13 @@ async function calculateRankingLive(monthKey: string, sectorId: number, includeB
   const bonus = includeBonus ? await calculateBonuses(monthKey) : null;
   const bonusById = new Map<number, any>((bonus?.bySdr || []).map((item: any) => [item.id, item] as [number, any]));
   // Ordem oficial: CONCILIE = realizadas > contratos fechados > agendadas > menor no-show.
-  // PROJURIS = realizadas > empresas PGFN acima de R$ 2M > agendadas > menor no-show.
+  // PROJURIS = realizadas normais > relâmpago > PGFN acima de R$ 2M > agendadas > menor no-show.
   // O nome é apenas o último critério técnico para garantir posições sempre únicas quando todos os indicadores forem idênticos.
-  const sorted = [...byId.values()].sort((a, b) => b.realized - a.realized || (isConcilie ? b.closedContracts - a.closedContracts : includeBonus ? b.specialMeetings - a.specialMeetings : 0) || b.scheduled - a.scheduled || a.noShow - b.noShow || String(a.name || a.email || "").localeCompare(String(b.name || b.email || ""), "pt-BR"));
+  const sorted = [...byId.values()].sort(isConcilie
+    ? (a, b) => b.realized - a.realized || b.closedContracts - a.closedContracts || b.scheduled - a.scheduled || a.noShow - b.noShow || String(a.name || a.email || "").localeCompare(String(b.name || b.email || ""), "pt-BR")
+    : includeBonus
+      ? compareProjurisRankingRows
+      : (a, b) => b.realized - a.realized || b.scheduled - a.scheduled || a.noShow - b.noShow || String(a.name || a.email || "").localeCompare(String(b.name || b.email || ""), "pt-BR"));
   const leaderCount = sorted[0]?.realized ?? 0;
   const ranked: any[] = [];
   sorted.forEach((item, index) => {
@@ -670,7 +688,7 @@ async function calculateRankingLive(monthKey: string, sectorId: number, includeB
     ranked.push({ ...item, position, rate: denominator ? Math.round((item.realized / denominator) * 100) : null, totalBonus: itemBonus?.totalValue ?? 0, specialBonus: itemBonus?.specialValue ?? 0, distanceToLeader: Math.max(0, leaderCount - item.realized) });
   });
   const evolution = [...daily.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([date, values]) => ({ date, values: Object.fromEntries(values) }));
-  return { monthKey, status: "ABERTA", rows: ranked, totals: { scheduled: rows.length, realized: rows.filter(row => row.meeting.status === "REALIZADA").length, noShow: rows.filter(row => row.meeting.status === "NO_SHOW").length, specialMeetings: ranked.reduce((sum, item) => sum + item.specialMeetings, 0), closedContracts: ranked.reduce((sum, item) => sum + item.closedContracts, 0), bonus: ranked.reduce((sum, item) => sum + item.totalBonus, 0) }, evolution, leaders: ranked.slice(0, 3).map(item => item.id) };
+  return { monthKey, status: "ABERTA", rows: ranked, totals: { scheduled: rows.length, realized: rows.filter(row => row.meeting.status === "REALIZADA" && !isCompletedQuickMeeting(row.meeting)).length, quickMeetings: rows.filter(row => isCompletedQuickMeeting(row.meeting)).length, noShow: rows.filter(row => row.meeting.status === "NO_SHOW").length, specialMeetings: ranked.reduce((sum, item) => sum + item.specialMeetings, 0), closedContracts: ranked.reduce((sum, item) => sum + item.closedContracts, 0), bonus: ranked.reduce((sum, item) => sum + item.totalBonus, 0) }, evolution, leaders: ranked.slice(0, 3).map(item => item.id) };
 }
 export async function getSectorRanking(monthKey: string, sectorId: number, includeBonus: boolean) {
   const competency = includeBonus ? await getBonusCompetency(monthKey) : null;
@@ -705,7 +723,7 @@ export async function calculateBonuses(monthKey: string) {
   const [year, month] = monthKey.split("-").map(Number); const lastDay = new Date(year, month, 0).getDate();
   const rows = await getAllMeetingsForSummary({ from: `${monthKey}-01`, to: `${monthKey}-${String(lastDay).padStart(2, "0")}`, status: "REALIZADA" }, { userId: 0, ownOnly: false, sectorId });
   const bySdr = new Map<number, any>();
-  for (const row of rows) { const m = row.meeting; const item = bySdr.get(m.sdrId) ?? { id: m.sdrId, name: row.sdrName || "Sem nome", normalMeetings: 0, specialMeetings: 0, specialItems: [] as any[] }; if (m.pgfnDebtOver2m) { item.specialMeetings += 1; item.specialItems.push({ id: m.id, company: m.companyName, cnpj: m.cnpj, sdr: row.sdrName, date: m.date, status: m.status, debtAmount: m.pgfnDebtAmount, value: 50 }); } else item.normalMeetings += 1; bySdr.set(m.sdrId, item); }
+  for (const row of rows) { const m = row.meeting; if (m.quickMeeting) continue; const item = bySdr.get(m.sdrId) ?? { id: m.sdrId, name: row.sdrName || "Sem nome", normalMeetings: 0, specialMeetings: 0, specialItems: [] as any[] }; if (m.pgfnDebtOver2m) { item.specialMeetings += 1; item.specialItems.push({ id: m.id, company: m.companyName, cnpj: m.cnpj, sdr: row.sdrName, date: m.date, status: m.status, debtAmount: m.pgfnDebtAmount, value: 50 }); } else item.normalMeetings += 1; bySdr.set(m.sdrId, item); }
   const calculated = [...bySdr.values()].map(item => { const band = bonusBand(item.normalMeetings); const next = nextBand(item.normalMeetings); return { ...item, band: band.min ? `${band.min}–${band.max === Infinity ? "+" : band.max}` : "Sem faixa", rate: band.rate, normalValue: item.normalMeetings * band.rate, specialValue: item.specialMeetings * 50, totalValue: item.normalMeetings * band.rate + item.specialMeetings * 50, nextRate: next?.rate ?? null, missingForNext: next ? Math.max(0, next.min - item.normalMeetings) : 0 }; });
   const totals = { total: calculated.reduce((sum, item) => sum + item.totalValue, 0), normalMeetings: calculated.reduce((sum, item) => sum + item.normalMeetings, 0), specialMeetings: calculated.reduce((sum, item) => sum + item.specialMeetings, 0), specialValue: calculated.reduce((sum, item) => sum + item.specialValue, 0) };
   return { monthKey, status: competency?.status ?? "ABERTA", closedAt: competency?.closedAt ?? null, totals, bySdr: calculated };

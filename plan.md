@@ -36,3 +36,18 @@ A interface seguirá o dashboard dark corporativo atual: painéis escuros, borda
 A planilha `villela-sdr-export-2026-09-01-a-2026-10-16.xlsx` é a fonte de dados para esta restauração. Um importador explícito e repetível valida IDs, tipos e vínculos antes de gravar as abas operacionais no MySQL gerenciado: reuniões, usuários, setores, vínculos, histórico, advogados, bonificações e logs de integração da API. IDs históricos de entidades serão mantidos; referências a setores serão remapeadas por `code` para os setores canônicos sem duplicar as linhas semeadas pelas migrations; a gravação dos registros ocorrerá em uma transação com guarda contra reimportação de tabelas já preenchidas.
 
 O `openId` não consta do Excel. Usuários importados recebem um identificador sintético não autenticável e o callback OAuth associa uma identidade real somente a um registro de importação inequivocamente selecionável pelo e-mail autenticado, preservando papel, estado ativo e vínculos de setor. Na duplicidade encontrada, o registro ativo é o único elegível; o histórico inativo permanece separado. Tokens Google, hashes de convite/API e credenciais omitidos pela exportação não serão reconstruídos: conexões Google ficam desconectadas até nova autorização, a integração histórica sem segredo fica desativada e sem hash, e seus logs são preservados.
+
+
+## Escopo desta solicitação — reunião relâmpago no Projuris
+
+Esta alteração autorizada limita-se ao setor existente `PROJURIS_2`. Não implementa a nova divisão de SDRs nem o novo tipo de usuário mencionados antes, pois ainda não foram especificados. CONCILIE e TRÁFEGO PAGO permanecem sem a caixa, sem novas métricas e com suas regras atuais.
+
+No formulário atual de criar/editar reunião, logo abaixo do campo de dívida PGFN, adicionar a caixa de seleção azul-bebê com o rótulo exato **“Reunião relâmpago realizada com o advogado”**. Persistir a classificação em uma coluna booleana aditiva `quickMeeting` com default `false`; reuniões históricas continuam inalteradas. O servidor deriva a disponibilidade da classificação do setor ativo `PROJURIS_2`, e não confia no setor enviado pelo cliente.
+
+Uma reunião marcada só conta como relâmpago quando seu resultado/status é `REALIZADA`. Nesse caso ela entra no contador separado `reunioesRelampago` e não entra em `REALIZADA`/reuniões normais, taxa normal de comparecimento, nem nos totais normais/especiais usados para remuneração por reunião; não há regra de bonificação própria para relâmpago solicitada. Status pendentes, no-show e cancelamentos não entram no contador de relâmpago. O filtro de datas/período existente continua sendo aplicado.
+
+Adicionar a contagem por SDR e no total do dashboard/indicadores e relatórios do período, bem como coluna própria no ranking do Projuris. No ranking Projuris, ordenar por reuniões realizadas normais (decrescente), depois relâmpago realizadas (decrescente), depois empresas/reuniões PGFN acima de R$ 2 milhões (decrescente) e, em seguida, preservar regras atuais: agendadas (decrescente), no-show (crescente) e nome como desempate determinístico. A reunião PGFN permanece elegível ao desempate PGFN independentemente da marca relâmpago; bonificações existentes não ganham categoria/valor novo.
+
+## Implementação
+
+Estender `drizzle/schema.ts` e gerar uma migration Drizzle somente aditiva; atualizar schemas de `server/routers.ts`, persistência/métricas/ranking/bonificações e exportação em `server/db.ts` e endpoints; atualizar o estado do modal, cartões/indicadores, relatório e tabela de ranking em `client/src/App.tsx`, reaproveitando o tema e os filtros atuais. Manter `/manus-routes.json` sem mudança, pois não nasce rota nova. Sem bibliotecas ou serviços externos novos. O checklist correspondente fica em `TODO.md`.
